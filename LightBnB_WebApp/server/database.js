@@ -103,10 +103,55 @@ exports.getAllReservations = getAllReservations;
  * @return {Promise<[{}]>}  A promise to the properties.
  */
 const getAllProperties = function(options, limit = 10) {
-  const queryString = `SELECT * FROM properties LIMIT $1`;
-  const values = [limit];
+  const queryParams = [];
+  let queryString = `
+  SELECT properties.*, avg(property_reviews.rating) as average_rating
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id
+  `;
 
-  return pool.query(queryString, values)
+  let areSearchParams = options.city ||
+  (options.minimum_price_per_night && options.maximum_price_per_night) ||
+   options.owner_id;
+
+  // If there are appropriate filters, concat a WHERE
+  if (areSearchParams) queryString += `WHERE `;
+
+  if (options.city) {
+    queryParams.push(options.city);
+    queryString += `city LIKE '%' || $${queryParams.length} || '%' AND `;
+  }
+  if (options.minimum_price_per_night && options.maximum_price_per_night) {
+    queryParams.push(options.minimum_price_per_night * 100,
+      options.maximum_price_per_night * 100);
+    queryString += `cost_per_night >= $${queryParams.length - 1} AND cost_per_night <= $${queryParams.length} AND `;
+  }
+  if (options.owner_id) {
+    queryParams.push(options.owner_id);
+    queryString += `owner_id = $${queryParams.length} AND `;
+  }
+  
+  // If there are any appropriate filters, trim the final 'AND '
+  if (areSearchParams) queryString = queryString.slice(0, -4);
+  
+  queryString += `
+  GROUP BY properties.id
+  `;
+  
+  // As an aggregate, minimum rating must be hanled later in a HAVING clause
+  if (options.minimum_rating) {
+    queryParams.push(Number(options.minimum_rating));
+    queryString += `HAVING avg(property_reviews.rating) >= $${queryParams.length}
+    `;
+  }
+  
+  queryParams.push(limit);
+  queryString += `ORDER BY cost_per_night
+  LIMIT $${queryParams.length};`;
+
+  // console.log(queryString, queryParams);
+  
+  return pool.query(queryString, queryParams)
     .then(res => res.rows)
     .catch(err => console.log(err));
 };
