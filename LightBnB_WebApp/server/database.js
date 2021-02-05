@@ -8,10 +8,6 @@ const pool = new Pool({
 });
 
 
-const properties = require('./json/properties.json');
-const users = require('./json/users.json');
-
-
 /// Users
 
 /**
@@ -49,13 +45,6 @@ exports.getUserWithId = getUserWithId;
  * @param {{name: string, password: string, email: string}} user
  * @return {Promise<{}>} A promise to the user.
  */
-// const addUser =  function(user) {
-//   const userId = Object.keys(users).length + 1;
-//   user.id = userId;
-//   users[userId] = user;
-//   return Promise.resolve(user);
-// };
-
 const addUser = user => {
   const queryString = `INSERT INTO users (name, email, password) 
                        VALUES ($1, $2, $3)
@@ -68,6 +57,7 @@ const addUser = user => {
 };
 exports.addUser = addUser;
 
+
 /// Reservations
 
 /**
@@ -75,7 +65,7 @@ exports.addUser = addUser;
  * @param {string} guestId The id of the user.
  * @return {Promise<[{}]>} A promise to the reservations.
  */
-const getAllReservations = function(guestId, limit = 10) {
+const getAllReservations = (guestId, limit = 10) => {
   const queryString = `
     SELECT reservations.*, properties.*, AVG(rating) AS average_rating
     FROM users
@@ -94,6 +84,7 @@ const getAllReservations = function(guestId, limit = 10) {
 };
 exports.getAllReservations = getAllReservations;
 
+
 /// Properties
 
 /**
@@ -102,12 +93,12 @@ exports.getAllReservations = getAllReservations;
  * @param {*} limit The number of results to return.
  * @return {Promise<[{}]>}  A promise to the properties.
  */
-const getAllProperties = function(options, limit = 10) {
+const getAllProperties = (options, limit = 10) => {
   const queryParams = [];
   let queryString = `
   SELECT properties.*, avg(property_reviews.rating) as average_rating
   FROM properties
-  JOIN property_reviews ON properties.id = property_id
+  LEFT JOIN property_reviews ON properties.id = property_id
   `;
 
   let areSearchParams = options.city ||
@@ -138,7 +129,7 @@ const getAllProperties = function(options, limit = 10) {
   GROUP BY properties.id
   `;
   
-  // As an aggregate, minimum rating must be hanled later in a HAVING clause
+  // As an aggregate, minimum rating must be handled later in a HAVING clause
   if (options.minimum_rating) {
     queryParams.push(Number(options.minimum_rating));
     queryString += `HAVING avg(property_reviews.rating) >= $${queryParams.length}
@@ -148,8 +139,6 @@ const getAllProperties = function(options, limit = 10) {
   queryParams.push(limit);
   queryString += `ORDER BY cost_per_night
   LIMIT $${queryParams.length};`;
-
-  // console.log(queryString, queryParams);
   
   return pool.query(queryString, queryParams)
     .then(res => res.rows)
@@ -157,16 +146,23 @@ const getAllProperties = function(options, limit = 10) {
 };
 exports.getAllProperties = getAllProperties;
 
-
 /**
  * Add a property to the database
  * @param {{}} property An object containing all of the property details.
  * @return {Promise<{}>} A promise to the property.
  */
-const addProperty = function(property) {
-  const propertyId = Object.keys(properties).length + 1;
-  property.id = propertyId;
-  properties[propertyId] = property;
-  return Promise.resolve(property);
+const addProperty = p => {
+  const queryString = `INSERT INTO properties (title, description, number_of_bedrooms, number_of_bathrooms, parking_spaces, cost_per_night, thumbnail_photo_url, cover_photo_url, street, country, city, province, post_code, owner_id)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+  RETURNING *;`;
+  const values = [p.title, p.description, Number(p.number_of_bedrooms), Number(p.number_of_bathrooms), Number(p.parking_spaces), Number(p.cost_per_night), p.thumbnail_photo_url, p.cover_photo_url, p.street, p.country, p.city, p.province, p.post_code, p.owner_id];
+  
+  return pool.query(queryString, values)
+    .then(newProp => {
+      console.log(newProp.rows[0]);
+      return newProp.rows[0];
+    })
+    .catch(err => console.log(err));
+
 };
 exports.addProperty = addProperty;
